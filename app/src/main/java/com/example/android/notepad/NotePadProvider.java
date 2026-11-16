@@ -16,7 +16,6 @@
 
 package com.example.android.notepad;
 
-import com.example.android.notepad.NotePad;
 
 import android.content.ClipDescription;
 import android.content.ContentProvider;

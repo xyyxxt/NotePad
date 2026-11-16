@@ -26,6 +26,7 @@ import android.content.ClipboardManager;
 import android.content.ClipData;
 import android.content.ComponentName;
 import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
@@ -142,13 +143,26 @@ public class NotesList extends ListActivity {
                     return true;
                 }
                 if (view.getId() == R.id.item_image) {
-                    String noteContent = cursor.getString(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_NOTE));
+                    String noteContent = cursor.getString(
+                            cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_NOTE));
                     ImageView imageView = (ImageView) view;
 
-
                     if (noteContent != null && noteContent.startsWith("content://")) {
-                        imageView.setVisibility(View.VISIBLE);
-                        imageView.setImageURI(Uri.parse(noteContent));
+                        // 通过 MIME 类型判断是图片还是视频
+                        String mimeType = getContentResolver().getType(Uri.parse(noteContent));
+                        if (mimeType != null && mimeType.startsWith("video/")) {
+                            // 是视频：显示一个占位图标
+                            imageView.setVisibility(View.VISIBLE);
+                            imageView.setImageResource(android.R.drawable.ic_media_play);
+                        } else {
+                            // 是图片：显示缩略图
+                            imageView.setVisibility(View.VISIBLE);
+                            try {
+                                imageView.setImageURI(Uri.parse(noteContent));
+                            } catch (Exception e) {
+                                imageView.setImageResource(android.R.drawable.ic_menu_gallery);
+                            }
+                        }
                     } else {
                         imageView.setVisibility(View.GONE);
                     }
@@ -197,6 +211,16 @@ public class NotesList extends ListActivity {
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                 startActivityForResult(intent, 1001); // 1001 是请求码
             }
+        });
+
+        // 4. 视频按钮
+        android.widget.ImageButton btnVideo = (android.widget.ImageButton)findViewById(R.id.list_video);
+        btnVideo.setOnClickListener(v -> {
+            Intent intent1 = new Intent(Intent.ACTION_GET_CONTENT);
+            intent1.setType("video/*");
+            intent1.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(intent1, 1002);
         });
 
         EditText searchInput = (EditText) findViewById(R.id.search_input);
@@ -547,6 +571,26 @@ public class NotesList extends ListActivity {
             performSearch(""); // 刷新列表
             Toast.makeText(this, "图片笔记已保存", Toast.LENGTH_SHORT).show();
 
+        }else if (requestCode == 1002 && resultCode == Activity.RESULT_OK && data != null) {
+            Uri videoUri = data.getData();
+            if (videoUri != null) {
+                try {
+                    // 持久化权限，防止重启后无法访问
+                    getContentResolver().takePersistableUriPermission(
+                            videoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (SecurityException e) {
+                    e.printStackTrace();
+                }
+
+                ContentValues values = new ContentValues();
+                values.put(NotePad.Notes.COLUMN_NAME_TITLE, "[视频笔记] " + new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(new Date()));
+                values.put(NotePad.Notes.COLUMN_NAME_NOTE, videoUri.toString()); // 存 URI
+                values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
+                values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+                getContentResolver().insert(getIntent().getData(), values);
+                performSearch("");
+                Toast.makeText(this, "视频笔记已保存", Toast.LENGTH_SHORT).show();
+            }
         }
         // 2. 处理 TXT 导入
         else if (requestCode == REQUEST_CODE_IMPORT_FILE) {
@@ -821,24 +865,38 @@ public class NotesList extends ListActivity {
     protected void onListItemClick(ListView l, View v, int position, long id) {
         Uri uri = ContentUris.withAppendedId(getIntent().getData(), id);
         Cursor cursor = (Cursor) getListAdapter().getItem(position);
-        String noteContent = cursor.getString(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_NOTE));
+        String noteContent = cursor.getString(
+                cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_NOTE));
 
         if (noteContent != null && noteContent.startsWith("content://")) {
-            try {
+            Uri contentUri = Uri.parse(noteContent);
+            String mimeType = getContentResolver().getType(contentUri);
+
+            if (mimeType != null && mimeType.startsWith("video/")) {
+                // 播放视频
                 Intent intent = new Intent(Intent.ACTION_VIEW);
-                String mimeType = getContentResolver().getType(Uri.parse(noteContent));
-                if (mimeType == null) mimeType = "image/*";
-
-                intent.setDataAndType(Uri.parse(noteContent), mimeType);
-                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                intent.setDataAndType(contentUri, mimeType);
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-                startActivity(Intent.createChooser(intent, "选择应用打开图片"));
-
-            } catch (ActivityNotFoundException e) {
-                Toast.makeText(this, "没有找到能查看图片的应用", Toast.LENGTH_SHORT).show();
+                try {
+                    startActivity(Intent.createChooser(intent, "选择应用播放视频"));
+                } catch (ActivityNotFoundException e) {
+                    Toast.makeText(this, "没有找到能播放视频的应用", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                // 查看图片
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    if (mimeType == null) mimeType = "image/*";
+                    intent.setDataAndType(contentUri, mimeType);
+                    intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(intent, "选择应用打开图片"));
+                } catch (ActivityNotFoundException e) {
+                    Toast.makeText(this, "没有找到能查看图片的应用", Toast.LENGTH_SHORT).show();
+                }
             }
         } else {
+            // 普通文本笔记，进入编辑器
             Intent intent = new Intent(this, NoteEditor.class);
             intent.setAction(Intent.ACTION_EDIT);
             intent.setData(uri);
