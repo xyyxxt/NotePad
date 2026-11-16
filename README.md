@@ -27,13 +27,13 @@
 
 ## 四、项目结构
 com.example.android.notepad
-├── NotePad.java # 数据契约类
-├── NotePadProvider.java # ContentProvider，负责数据库增删改查
-├── NotesList.java # 主界面：笔记列表、搜索、导入导出、多媒体入口
-├── NoteEditor.java # 笔记编辑界面
-├── TitleEditor.java # 标题编辑界面
-├── TodoActivity.java # 待办笔记列表
-└── NotesLiveFolder.java # ContentProvider的LiveFolder（实时文件夹）
+- NotePad.java # 数据契约类 
+- NotePadProvider.java # ContentProvider，负责数据库增删改查
+- NotesList.java # 主界面：笔记列表、搜索、导入导出、多媒体入口
+- NoteEditor.java # 笔记编辑界面
+- TitleEditor.java # 标题编辑界面
+- TodoActivity.java # 待办笔记列表
+- NotesLiveFolder.java # ContentProvider的LiveFolder（实时文件夹）
 
 
 ## 五、关键实现说明
