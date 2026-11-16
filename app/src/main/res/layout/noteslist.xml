@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/app_background_color">
+
+    <EditText
+        android:id="@+id/search_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="请输入关键词"
+        android:textColorHint="#686B6E"
+        android:singleLine="true"
+        android:padding="10dp"
+        android:layout_margin="8dp"
+        android:background="@drawable/bg_search_rounded"
+        android:drawableLeft="@android:drawable/ic_menu_search"
+        android:drawablePadding="8dp"
+        />
+
+    <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="4dp">
+
+    <!-- 第 1 个：简记 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_margin="5dp">
+        <ImageButton
+            android:id="@+id/list_shorthand"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:src="@drawable/list_shorthand"
+            android:background="@drawable/list"
+            android:scaleType="centerInside"
+            android:padding="10dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="速记"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="4dp"/>
+    </LinearLayout>
+
+    <!-- 第 2 个：待办 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_margin="5dp">
+        <ImageButton
+            android:id="@+id/list_todo"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:src="@drawable/list_todo"
+            android:background="@drawable/list"
+            android:scaleType="centerInside"
+            android:padding="10dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="待办"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="4dp"/>
+    </LinearLayout>
+
+    <!-- 第 3 个：图片 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_margin="5dp">
+        <ImageButton
+            android:id="@+id/list_photo"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:src="@drawable/list_photo"
+            android:background="@drawable/list"
+            android:scaleType="centerInside"
+            android:padding="10dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="上传图片"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="4dp"/>
+    </LinearLayout>
+
+    <!-- 第 4 个：语音 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_margin="5dp">
+        <ImageButton
+            android:id="@+id/list_voice"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:src="@drawable/list_voice"
+            android:background="@drawable/list"
+            android:scaleType="centerInside"
+            android:padding="10dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="语音速记"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="4dp"/>
+    </LinearLayout>
+
+    <!-- 第 5 个：视频 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_margin="5dp">
+        <ImageButton
+            android:id="@+id/list_video"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:src="@drawable/list_video"
+            android:background="@drawable/list"
+            android:scaleType="centerInside"
+            android:padding="10dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="上传视频"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="4dp"/>
+    </LinearLayout>
+    </LinearLayout>
+    <ListView
+        android:id="@android:id/list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#1F2122"/>
+
+</LinearLayout>

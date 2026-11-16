@@ -63,7 +63,7 @@ public class NotePadProvider extends ContentProvider implements PipeDataWriter<C
     /**
      * The database version
      */
-    private static final int DATABASE_VERSION = 2;
+    private static final int DATABASE_VERSION = 3;
 
     /**
      * A projection map used to select columns from the database
@@ -156,6 +156,10 @@ public class NotePadProvider extends ContentProvider implements PipeDataWriter<C
                 NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE,
                 NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE);
 
+        sNotesProjectionMap.put(NotePad.Notes.COLUMN_NAME_IS_DONE, NotePad.Notes.COLUMN_NAME_IS_DONE);
+
+        sNotesProjectionMap.put(NotePad.Notes.COLUMN_NAME_IS_TODO, NotePad.Notes.COLUMN_NAME_IS_TODO);
+
         /*
          * Creates an initializes a projection map for handling Live Folders
          */
@@ -196,7 +200,9 @@ public class NotePadProvider extends ContentProvider implements PipeDataWriter<C
                    + NotePad.Notes.COLUMN_NAME_TITLE + " TEXT,"
                    + NotePad.Notes.COLUMN_NAME_NOTE + " TEXT,"
                    + NotePad.Notes.COLUMN_NAME_CREATE_DATE + " INTEGER,"
-                   + NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE + " INTEGER"
+                   + NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE + " INTEGER,"
+                   + NotePad.Notes.COLUMN_NAME_IS_DONE + " INTEGER DEFAULT 0,"
+                   + NotePad.Notes.COLUMN_NAME_IS_TODO + " INTEGER DEFAULT 0"
                    + ");");
        }
 

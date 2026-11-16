@@ -18,7 +18,10 @@ package com.example.android.notepad;
 
 import com.example.android.notepad.NotePad;
 
+import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.ListActivity;
+import android.content.ActivityNotFoundException;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 import android.content.ComponentName;
@@ -28,6 +31,8 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.ContextMenu;
 import android.view.Menu;
@@ -36,8 +41,19 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.widget.AdapterView;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.SimpleCursorAdapter;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 
 /**
@@ -52,90 +68,186 @@ import android.widget.SimpleCursorAdapter;
  */
 public class NotesList extends ListActivity {
 
-    // For logging and debugging
+    //日志
     private static final String TAG = "NotesList";
 
-    /**
-     * The columns needed by the cursor adapter
-     */
+    //查询时请求的列
     private static final String[] PROJECTION = new String[] {
             NotePad.Notes._ID, // 0
-            NotePad.Notes.COLUMN_NAME_TITLE, // 1
+            NotePad.Notes.COLUMN_NAME_TITLE, // 1 标题
+            NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, // 2 日期
+            NotePad.Notes.COLUMN_NAME_NOTE, // 3 内容
+            NotePad.Notes.COLUMN_NAME_IS_TODO // 4 是否为待办
     };
 
-    /** The index of the title column */
+    //标题列在游标中的索引，供上下文菜单标题使用。
     private static final int COLUMN_INDEX_TITLE = 1;
 
-    /**
-     * onCreate is called when Android starts this Activity from scratch.
-     */
+    //列表适配器，用 SimpleCursorAdapter 将 Cursor 数据绑定到列表项视图。
+    private SimpleCursorAdapter adapter;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // The user does not need to hold down the key to use menu shortcuts.
+        setContentView(R.layout.noteslist);
         setDefaultKeyMode(DEFAULT_KEYS_SHORTCUT);
 
-        /* If no data is given in the Intent that started this Activity, then this Activity
-         * was started when the intent filter matched a MAIN action. We should use the default
-         * provider URI.
-         */
-        // Gets the intent that started this Activity.
+        //如果启动本 Activity 的 Intent 没有带数据 URI，则默认使用 NotePad.Notes.CONTENT_URI
         Intent intent = getIntent();
 
-        // If there is no data associated with the Intent, sets the data to the default URI, which
-        // accesses a list of notes.
         if (intent.getData() == null) {
             intent.setData(NotePad.Notes.CONTENT_URI);
         }
 
-        /*
-         * Sets the callback for context menu activation for the ListView. The listener is set
-         * to be this Activity. The effect is that context menus are enabled for items in the
-         * ListView, and the context menu is handled by a method in NotesList.
-         */
+        //注册上下文菜单监听器
         getListView().setOnCreateContextMenuListener(this);
 
-        /* Performs a managed query. The Activity handles closing and requerying the cursor
-         * when needed.
-         *
-         * Please see the introductory note about performing provider operations on the UI thread.
-         */
-        Cursor cursor = managedQuery(
-            getIntent().getData(),            // Use the default content URI for the provider.
-            PROJECTION,                       // Return the note ID and title for each note.
-            null,                             // No where clause, return all records.
-            null,                             // No where clause, therefore no where column values.
-            NotePad.Notes.DEFAULT_SORT_ORDER  // Use the default sort order.
+        //用哪些数据
+        String[] dataColumns = { NotePad.Notes.COLUMN_NAME_TITLE ,
+                NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE} ;
+
+        //显示到界面上的哪个位置
+        int[] viewIDs = { android.R.id.text1 ,
+                R.id.text2};
+
+        //通过 ContentResolver 查询数据
+        //Cursor 就像一张 Excel 表，指针一行一行指着读。
+        // 【修改点】：加上查询条件，只显示 is_todo = 0 的普通笔记
+        Cursor initialCursor = getContentResolver().query(
+                getIntent().getData(),
+                PROJECTION,
+                NotePad.Notes.COLUMN_NAME_IS_TODO + " = 0",
+                null,
+                NotePad.Notes.DEFAULT_SORT_ORDER
         );
 
-        /*
-         * The following two arrays create a "map" between columns in the cursor and view IDs
-         * for items in the ListView. Each element in the dataColumns array represents
-         * a column name; each element in the viewID array represents the ID of a View.
-         * The SimpleCursorAdapter maps them in ascending order to determine where each column
-         * value will appear in the ListView.
-         */
+        // 用 SimpleCursorAdapter 把 Cursor 绑定到 noteslist_item.xml
+        adapter = new SimpleCursorAdapter(
+                this,                             // The Context for the ListView
+                R.layout.noteslist_item,          // Points to the XML for a list item
+                initialCursor,                           // The cursor to get items from
+                dataColumns,
+                viewIDs
+        );
 
-        // The names of the cursor columns to display in the view, initialized to the title column
-        String[] dataColumns = { NotePad.Notes.COLUMN_NAME_TITLE } ;
+        adapter.setViewBinder(new SimpleCursorAdapter.ViewBinder() {
+            @Override
+            public boolean setViewValue(View view, Cursor cursor, int columnIndex) {
+                if (view.getId() == R.id.text2) {
+                    long timeMillis = cursor.getLong(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE));
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+                    ((TextView) view).setText(sdf.format(new Date(timeMillis)));
+                    return true;
+                }
+                if (view.getId() == R.id.item_image) {
+                    String noteContent = cursor.getString(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_NOTE));
+                    ImageView imageView = (ImageView) view;
 
-        // The view IDs that will display the cursor columns, initialized to the TextView in
-        // noteslist_item.xml
-        int[] viewIDs = { android.R.id.text1 };
 
-        // Creates the backing adapter for the ListView.
-        SimpleCursorAdapter adapter
-            = new SimpleCursorAdapter(
-                      this,                             // The Context for the ListView
-                      R.layout.noteslist_item,          // Points to the XML for a list item
-                      cursor,                           // The cursor to get items from
-                      dataColumns,
-                      viewIDs
-              );
+                    if (noteContent != null && noteContent.startsWith("content://")) {
+                        imageView.setVisibility(View.VISIBLE);
+                        imageView.setImageURI(Uri.parse(noteContent));
+                    } else {
+                        imageView.setVisibility(View.GONE);
+                    }
+                    return true;
+                }
+                return false;
+            }
+        });
 
         // Sets the ListView's adapter to be the cursor adapter that was just created.
         setListAdapter(adapter);
+
+        //五个方形按钮的事件
+        //1.速写
+        android.widget.ImageButton btnShorthand = (android.widget.ImageButton)findViewById(R.id.list_shorthand);
+        btnShorthand.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(NotesList.this, NoteEditor.class);
+                intent.setAction(Intent.ACTION_INSERT);
+                intent.setData(getIntent().getData());
+                // 标记这是一个普通笔记
+                intent.putExtra("IS_TODO", false);
+                startActivity(intent);
+            }
+        });
+
+        //2.待办
+        android.widget.ImageButton btnTodo = (android.widget.ImageButton)findViewById(R.id.list_todo);
+        btnTodo.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(NotesList.this, TodoActivity.class);
+                startActivity(intent);
+            }
+        });
+
+        // 3. 图片按钮
+        android.widget.ImageButton btnPhoto = (android.widget.ImageButton)findViewById(R.id.list_photo);
+        btnPhoto.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // 打开系统相册选择图片
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*"); // 限制只能选图片
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                startActivityForResult(intent, 1001); // 1001 是请求码
+            }
+        });
+
+        EditText searchInput = (EditText) findViewById(R.id.search_input);
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+                performSearch(charSequence.toString());
+            }
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+
+            }
+        });
+    }
+
+    /**
+     * 自定义的查询方法
+     * @param keyword 搜索关键字
+     */
+    private void performSearch(String keyword){
+        String selection = NotePad.Notes.COLUMN_NAME_IS_TODO + " = 0"; // 基础条件：只能是普通笔记
+        String[] selectionArgs = null;
+
+        if(keyword != null && !keyword.trim().isEmpty()){
+            selection = "(" + NotePad.Notes.COLUMN_NAME_TITLE + " LIKE ? OR "
+                    + NotePad.Notes.COLUMN_NAME_NOTE + " LIKE ?)"
+                    + " AND " + NotePad.Notes.COLUMN_NAME_IS_TODO + " = 0";
+            String searchPattern = "%" + keyword.trim() + "%";
+            selectionArgs = new String[]{searchPattern,searchPattern};
+        }
+        Cursor newCursor = getContentResolver().query(
+                getIntent().getData(),
+                PROJECTION,
+                selection,
+                selectionArgs,
+                NotePad.Notes.DEFAULT_SORT_ORDER
+        );
+
+        Cursor oldCursor = adapter.getCursor();
+
+        adapter.changeCursor(newCursor);
+
+        if(oldCursor != null && oldCursor != newCursor){
+            oldCursor.close();
+        }
     }
 
     /**
@@ -151,16 +263,12 @@ public class NotesList extends ListActivity {
      * @param menu A Menu object, to which menu items should be added.
      * @return True, always. The menu should be displayed.
      */
-    @Override
+    @Override  //。。。
     public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate menu from XML resource
+
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.list_options_menu, menu);
 
-        // Generate any additional actions that can be performed on the
-        // overall list.  In a normal install, there are no additional
-        // actions found here, but this allows other applications to extend
-        // our menu with their own actions.
         Intent intent = new Intent(null, getIntent().getData());
         intent.addCategory(Intent.CATEGORY_ALTERNATIVE);
         menu.addIntentOptions(Menu.CATEGORY_ALTERNATIVE, 0, 0,
@@ -169,7 +277,7 @@ public class NotesList extends ListActivity {
         return super.onCreateOptionsMenu(menu);
     }
 
-    @Override
+    @Override//菜单显示前动态调整
     public boolean onPrepareOptionsMenu(Menu menu) {
         super.onPrepareOptionsMenu(menu);
 
@@ -224,26 +332,26 @@ public class NotesList extends ListActivity {
              * Add alternatives to the menu
              */
             menu.addIntentOptions(
-                Menu.CATEGORY_ALTERNATIVE,  // Add the Intents as options in the alternatives group.
-                Menu.NONE,                  // A unique item ID is not required.
-                Menu.NONE,                  // The alternatives don't need to be in order.
-                null,                       // The caller's name is not excluded from the group.
-                specifics,                  // These specific options must appear first.
-                intent,                     // These Intent objects map to the options in specifics.
-                Menu.NONE,                  // No flags are required.
-                items                       // The menu items generated from the specifics-to-
-                                            // Intents mapping
+                    Menu.CATEGORY_ALTERNATIVE,  // Add the Intents as options in the alternatives group.
+                    Menu.NONE,                  // A unique item ID is not required.
+                    Menu.NONE,                  // The alternatives don't need to be in order.
+                    null,                       // The caller's name is not excluded from the group.
+                    specifics,                  // These specific options must appear first.
+                    intent,                     // These Intent objects map to the options in specifics.
+                    Menu.NONE,                  // No flags are required.
+                    items                       // The menu items generated from the specifics-to-
+                    // Intents mapping
             );
-                // If the Edit menu item exists, adds shortcuts for it.
-                if (items[0] != null) {
+            // If the Edit menu item exists, adds shortcuts for it.
+            if (items[0] != null) {
 
-                    // Sets the Edit menu item shortcut to numeric "1", letter "e"
-                    items[0].setShortcut('1', 'e');
-                }
-            } else {
-                // If the list is empty, removes any existing alternative actions from the menu
-                menu.removeGroup(Menu.CATEGORY_ALTERNATIVE);
+                // Sets the Edit menu item shortcut to numeric "1", letter "e"
+                items[0].setShortcut('1', 'e');
             }
+        } else {
+            // If the list is empty, removes any existing alternative actions from the menu
+            menu.removeGroup(Menu.CATEGORY_ALTERNATIVE);
+        }
 
         // Displays the menu
         return true;
@@ -261,7 +369,7 @@ public class NotesList extends ListActivity {
      * @return True, if the INSERT menu item was selected; otherwise, the result of calling
      * the parent method.
      */
-    @Override
+    @Override//。。。菜单点击处理
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == R.id.menu_add) {
             /*
@@ -269,7 +377,11 @@ public class NotesList extends ListActivity {
              * has to have action ACTION_INSERT. No category is set, so DEFAULT is assumed.
              * In effect, this starts the NoteEditor Activity in NotePad.
              */
-            startActivity(new Intent(Intent.ACTION_INSERT, getIntent().getData()));
+            Intent intent = new Intent(this, NoteEditor.class);
+            intent.setAction(Intent.ACTION_INSERT);
+            intent.setData(getIntent().getData());
+            intent.putExtra("IS_TODO", false); // 标记为普通笔记
+            startActivity(intent);
             return true;
         } else if (item.getItemId() == R.id.menu_paste) {
             /*
@@ -277,10 +389,269 @@ public class NotesList extends ListActivity {
              * has to have action ACTION_PASTE. No category is set, so DEFAULT is assumed.
              * In effect, this starts the NoteEditor Activity in NotePad.
              */
-            startActivity(new Intent(Intent.ACTION_PASTE, getIntent().getData()));
+            Intent intent = new Intent(this, NoteEditor.class);
+            intent.setAction(Intent.ACTION_PASTE);
+            intent.setData(getIntent().getData());
+            intent.putExtra("IS_TODO", false); // 标记为普通笔记
+            startActivity(intent);
+            return true;
+        }else if (item.getItemId() == R.id.menu_export) {
+            exportNotesToTxt();
+            return true;
+        } else if (item.getItemId() == R.id.menu_import) {
+            importNotesFromTxt();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+    private static final int REQUEST_CODE_CREATE_FILE = 1;
+
+    //导出全部
+    private void exportNotesToTxt() {
+        String timeStamp = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
+        String fileName = "NotePad_Backup_" + timeStamp + ".txt";
+
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, fileName);
+
+        try {
+            startActivityForResult(intent, REQUEST_CODE_CREATE_FILE);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "找不到文件管理器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static final int REQUEST_CODE_EXPORT_SINGLE = 2;
+    private Uri pendingExportUri;
+
+    //导出一个
+    private void exportSingleNoteToTxt(Uri noteUri) {
+        pendingExportUri = noteUri;
+
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+        String fileName = "Note_Single_" + timeStamp + ".txt";
+
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, fileName);
+
+        try {
+            startActivityForResult(intent, REQUEST_CODE_EXPORT_SINGLE);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "找不到文件管理器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    //实际写文件
+    private void writeDataToUri(Uri targetUri, Uri fileUri) {
+        String[] exportProjection = {
+                NotePad.Notes.COLUMN_NAME_TITLE,
+                NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE,
+                NotePad.Notes.COLUMN_NAME_NOTE
+        };
+
+        Cursor cursor = getContentResolver().query(
+                targetUri,
+                exportProjection,
+                null, null,
+                NotePad.Notes.DEFAULT_SORT_ORDER
+        );
+
+        if (cursor == null) {
+            Toast.makeText(this, "查询数据失败", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        try {
+            OutputStream outputStream = getContentResolver().openOutputStream(fileUri);
+            if (outputStream == null) return;
+
+            OutputStreamWriter writer = new OutputStreamWriter(outputStream, "UTF-8");
+
+            while (cursor.moveToNext()) {
+                String title = cursor.getString(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_TITLE));
+                long timeMillis = cursor.getLong(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE));
+                String note = cursor.getString(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_NOTE));
+
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+                String timeStr = sdf.format(new Date(timeMillis));
+
+                writer.write("标题：" + (title == null ? "无标题" : title) + "\n");
+                writer.write("时间：" + timeStr + "\n");
+                writer.write("内容：" + (note == null ? "" : note) + "\n");
+                writer.write("----------------------------------------\n\n");
+            }
+
+            writer.flush();
+            writer.close();
+            outputStream.close();
+
+            Toast.makeText(this, "导出成功！", Toast.LENGTH_SHORT).show();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "导出失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+    }
+    private static final int REQUEST_CODE_IMPORT_FILE = 3;
+
+    //选择要导入的 TXT
+    private void importNotesFromTxt() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain"); // 只显示 txt 文件
+
+        try {
+            startActivityForResult(intent, REQUEST_CODE_IMPORT_FILE);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "找不到文件管理器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // 在 onActivityResult 中拦截导入请求
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (resultCode != Activity.RESULT_OK || data == null) return;
+
+        Uri fileUri = data.getData();
+        if (fileUri == null) return;
+
+        // 1. 处理图片插入
+        if (requestCode == 1001) {
+            try {
+                getContentResolver().takePersistableUriPermission(
+                        fileUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                );
+            } catch (SecurityException e) {
+                e.printStackTrace();
+            }
+
+            android.content.ContentValues values = new android.content.ContentValues();
+            values.put(NotePad.Notes.COLUMN_NAME_TITLE, "[图片笔记] " + new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(new Date()));
+            values.put(NotePad.Notes.COLUMN_NAME_NOTE, fileUri.toString());
+            values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
+            values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+
+            getContentResolver().insert(getIntent().getData(), values);
+
+            performSearch(""); // 刷新列表
+            Toast.makeText(this, "图片笔记已保存", Toast.LENGTH_SHORT).show();
+
+        }
+        // 2. 处理 TXT 导入
+        else if (requestCode == REQUEST_CODE_IMPORT_FILE) {
+            parseAndSaveTxt(fileUri);
+        }
+        // 3. 处理全部导出
+        else if (requestCode == REQUEST_CODE_CREATE_FILE) {
+            writeDataToUri(getIntent().getData(), fileUri);
+        }
+        // 4. 处理单条导出
+        else if (requestCode == REQUEST_CODE_EXPORT_SINGLE && pendingExportUri != null) {
+            writeDataToUri(pendingExportUri, fileUri);
+        }
+    }
+
+    //解析 TXT 文件并插入数据库
+    private void parseAndSaveTxt(Uri fileUri) {
+        int importCount = 0;
+        try {
+            java.io.InputStream inputStream = getContentResolver().openInputStream(fileUri);
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream, "UTF-8"));
+
+            String line;
+            String currentTitle = null;
+            StringBuilder currentContent = new StringBuilder();
+            // 使用临时 List 先存下来，最后统一插入
+            java.util.List<android.content.ContentValues> noteList = new java.util.ArrayList<>();
+
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("标题：")) {
+                    // 如果之前已经收集了一个完整的笔记，先暂存到 List
+                    if (currentTitle != null) {
+                        noteList.add(buildNoteValues(currentTitle, currentContent.toString()));
+                        importCount++;
+                    }
+                    currentTitle = line.substring(3).trim();
+                    currentContent.setLength(0); // 清空内容
+
+                } else if (line.startsWith("时间：")) {
+                    // 忽略时间行
+                    continue;
+                } else if (line.startsWith("-----")) {
+                    // 分割线，代表这一篇笔记结束了
+                    if (currentTitle != null) {
+                        noteList.add(buildNoteValues(currentTitle, currentContent.toString()));
+                        importCount++;
+                        currentTitle = null;
+                        currentContent.setLength(0);
+                    }
+                } else if (line.startsWith("内容：")) {
+                    currentContent.append(line.substring(3));
+                } else {
+                    // 多行内容拼接
+                    if (currentContent.length() > 0) {
+                        currentContent.append("\n");
+                    }
+                    currentContent.append(line);
+                }
+            }
+
+            // 处理最后一条笔记
+            if (currentTitle != null) {
+                noteList.add(buildNoteValues(currentTitle, currentContent.toString()));
+                importCount++;
+            }
+
+            reader.close();
+            inputStream.close();
+
+            // 统一批量插入
+            for (android.content.ContentValues values : noteList) {
+                getContentResolver().insert(getIntent().getData(), values);
+            }
+
+            Toast.makeText(this, "成功恢复 " + importCount + " 条笔记！", Toast.LENGTH_LONG).show();
+            performSearch(""); // 刷新列表
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "恢复失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // 提取出来的辅助方法，用于构建 ContentValues
+    private android.content.ContentValues buildNoteValues(String title, String content) {
+        android.content.ContentValues values = new android.content.ContentValues();
+        values.put(NotePad.Notes.COLUMN_NAME_TITLE, title);
+        values.put(NotePad.Notes.COLUMN_NAME_NOTE, content);
+        values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
+        values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+        return values;
+    }
+
+    // 将解析出的单条笔记插入 ContentProvider
+    private void saveNoteToDatabase(String title, String content) {
+        android.content.ContentValues values = new android.content.ContentValues();
+        values.put(NotePad.Notes.COLUMN_NAME_TITLE, title);
+        values.put(NotePad.Notes.COLUMN_NAME_NOTE, content);
+        // 插入当前时间作为修改时间
+        values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
+
+        // 【修改点】：导入的笔记默认为普通笔记
+        values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+
+        getContentResolver().insert(getIntent().getData(), values);
     }
 
     /**
@@ -296,7 +667,7 @@ public class NotesList extends ListActivity {
      * @param menuInfo Data associated with view.
      * @throws ClassCastException
      */
-    @Override
+    @Override  //创建上下文菜单
     public void onCreateContextMenu(ContextMenu menu, View view, ContextMenuInfo menuInfo) {
 
         // The data from the menu item.
@@ -339,8 +710,8 @@ public class NotesList extends ListActivity {
         // as well.  This does a query on the system for any activities that
         // implement the ALTERNATIVE_ACTION for our data, adding a menu item
         // for each one that is found.
-        Intent intent = new Intent(null, Uri.withAppendedPath(getIntent().getData(), 
-                                        Integer.toString((int) info.id) ));
+        Intent intent = new Intent(null, Uri.withAppendedPath(getIntent().getData(),
+                Integer.toString((int) info.id) ));
         intent.addCategory(Intent.CATEGORY_ALTERNATIVE);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         menu.addIntentOptions(Menu.CATEGORY_ALTERNATIVE, 0, 0,
@@ -357,7 +728,7 @@ public class NotesList extends ListActivity {
      * which triggers the default handling of the item.
      * @throws ClassCastException
      */
-    @Override
+    @Override//上下文菜单事件触发
     public boolean onContextItemSelected(MenuItem item) {
         // The data from the menu item.
         AdapterView.AdapterContextMenuInfo info;
@@ -394,7 +765,10 @@ public class NotesList extends ListActivity {
         int id = item.getItemId();
         if (id == R.id.context_open) {
             // Launch activity to view/edit the currently selected item
-            startActivity(new Intent(Intent.ACTION_EDIT, noteUri));
+            Intent editIntent = new Intent(this, NoteEditor.class);
+            editIntent.setAction(Intent.ACTION_EDIT);
+            editIntent.setData(noteUri);
+            startActivity(editIntent);
             return true;
         } else if (id == R.id.context_copy) { //BEGIN_INCLUDE(copy)
             // Gets a handle to the clipboard service.
@@ -423,9 +797,13 @@ public class NotesList extends ListActivity {
 
             // Returns to the caller and skips further processing.
             return true;
+        }else if (id == R.id.context_export) {
+            exportSingleNoteToTxt(noteUri);
+            return true;
         }
         return super.onContextItemSelected(item);
     }
+
 
     /**
      * This method is called when the user clicks a note in the displayed list.
@@ -438,26 +816,33 @@ public class NotesList extends ListActivity {
      * @param position The position of v in the displayed list
      * @param id The row ID of the clicked item
      */
+    @SuppressLint("WrongConstant")
     @Override
     protected void onListItemClick(ListView l, View v, int position, long id) {
-
-        // Constructs a new URI from the incoming URI and the row ID
         Uri uri = ContentUris.withAppendedId(getIntent().getData(), id);
+        Cursor cursor = (Cursor) getListAdapter().getItem(position);
+        String noteContent = cursor.getString(cursor.getColumnIndexOrThrow(NotePad.Notes.COLUMN_NAME_NOTE));
 
-        // Gets the action from the incoming Intent
-        String action = getIntent().getAction();
+        if (noteContent != null && noteContent.startsWith("content://")) {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                String mimeType = getContentResolver().getType(Uri.parse(noteContent));
+                if (mimeType == null) mimeType = "image/*";
 
-        // Handles requests for note data
-        if (Intent.ACTION_PICK.equals(action) || Intent.ACTION_GET_CONTENT.equals(action)) {
+                intent.setDataAndType(Uri.parse(noteContent), mimeType);
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-            // Sets the result to return to the component that called this Activity. The
-            // result contains the new URI
-            setResult(RESULT_OK, new Intent().setData(uri));
+                startActivity(Intent.createChooser(intent, "选择应用打开图片"));
+
+            } catch (ActivityNotFoundException e) {
+                Toast.makeText(this, "没有找到能查看图片的应用", Toast.LENGTH_SHORT).show();
+            }
         } else {
-
-            // Sends out an Intent to start an Activity that can handle ACTION_EDIT. The
-            // Intent's data is the note ID URI. The effect is to call NoteEdit.
-            startActivity(new Intent(Intent.ACTION_EDIT, uri));
+            Intent intent = new Intent(this, NoteEditor.class);
+            intent.setAction(Intent.ACTION_EDIT);
+            intent.setData(uri);
+            startActivity(intent);
         }
     }
 }
