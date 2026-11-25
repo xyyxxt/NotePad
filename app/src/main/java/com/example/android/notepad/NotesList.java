@@ -72,6 +72,8 @@ public class NotesList extends ListActivity {
     //日志
     private static final String TAG = "NotesList";
 
+    private int currentNoteType = -1;
+
     //查询时请求的列
     private static final String[] PROJECTION = new String[] {
             NotePad.Notes._ID, // 0
@@ -206,7 +208,7 @@ public class NotesList extends ListActivity {
             @Override
             public void onClick(View v) {
                 // 打开系统相册选择图片
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.setType("image/*"); // 限制只能选图片
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                 startActivityForResult(intent, 1001); // 1001 是请求码
@@ -216,7 +218,7 @@ public class NotesList extends ListActivity {
         // 4. 视频按钮
         android.widget.ImageButton btnVideo = (android.widget.ImageButton)findViewById(R.id.list_video);
         btnVideo.setOnClickListener(v -> {
-            Intent intent1 = new Intent(Intent.ACTION_GET_CONTENT);
+            Intent intent1 = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent1.setType("video/*");
             intent1.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
                     | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
@@ -240,6 +242,21 @@ public class NotesList extends ListActivity {
 
             }
         });
+
+        android.widget.RadioGroup rgType = (android.widget.RadioGroup)findViewById(R.id.rg_note_type);
+        rgType.setOnCheckedChangeListener((group, checkedId) -> {
+            if (checkedId == R.id.rb_all) {
+                currentNoteType = -1;
+            } else if (checkedId == R.id.rb_text) {
+                currentNoteType = 0;
+            } else if (checkedId == R.id.rb_image) {
+                currentNoteType = 1;
+            } else if (checkedId == R.id.rb_video) {
+                currentNoteType = 2;
+            }
+            // 重新查询数据
+            performSearch(((android.widget.EditText) findViewById(R.id.search_input)).getText().toString());
+        });
     }
 
     /**
@@ -247,26 +264,38 @@ public class NotesList extends ListActivity {
      * @param keyword 搜索关键字
      */
     private void performSearch(String keyword){
-        String selection = NotePad.Notes.COLUMN_NAME_IS_TODO + " = 0"; // 基础条件：只能是普通笔记
-        String[] selectionArgs = null;
+        StringBuilder selectionBuilder = new StringBuilder();
+        selectionBuilder.append(NotePad.Notes.COLUMN_NAME_IS_TODO).append(" = 0");
 
-        if(keyword != null && !keyword.trim().isEmpty()){
-            selection = "(" + NotePad.Notes.COLUMN_NAME_TITLE + " LIKE ? OR "
-                    + NotePad.Notes.COLUMN_NAME_NOTE + " LIKE ?)"
-                    + " AND " + NotePad.Notes.COLUMN_NAME_IS_TODO + " = 0";
-            String searchPattern = "%" + keyword.trim() + "%";
-            selectionArgs = new String[]{searchPattern,searchPattern};
+        // 加入类型过滤条件
+        if (currentNoteType != -1) {
+            selectionBuilder.append(" AND ").append(NotePad.Notes.COLUMN_NAME_NOTE_TYPE)
+                    .append(" = ").append(currentNoteType);
         }
+
+        java.util.List<String> argsList = new java.util.ArrayList<>();
+
+        // 加入关键词搜索
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            selectionBuilder.append(" AND (")
+                    .append(NotePad.Notes.COLUMN_NAME_TITLE).append(" LIKE ? OR ")
+                    .append(NotePad.Notes.COLUMN_NAME_NOTE).append(" LIKE ?)");
+            String searchPattern = "%" + keyword.trim() + "%";
+            argsList.add(searchPattern);
+            argsList.add(searchPattern);
+        }
+
+        String[] selectionArgs = argsList.isEmpty() ? null : argsList.toArray(new String[0]);
+
         Cursor newCursor = getContentResolver().query(
                 getIntent().getData(),
                 PROJECTION,
-                selection,
+                selectionBuilder.toString(),
                 selectionArgs,
                 NotePad.Notes.DEFAULT_SORT_ORDER
         );
 
         Cursor oldCursor = adapter.getCursor();
-
         adapter.changeCursor(newCursor);
 
         if(oldCursor != null && oldCursor != newCursor){
@@ -565,6 +594,7 @@ public class NotesList extends ListActivity {
             values.put(NotePad.Notes.COLUMN_NAME_NOTE, fileUri.toString());
             values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
             values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+            values.put(NotePad.Notes.COLUMN_NAME_NOTE_TYPE, 1);
 
             getContentResolver().insert(getIntent().getData(), values);
 
@@ -579,7 +609,7 @@ public class NotesList extends ListActivity {
                     getContentResolver().takePersistableUriPermission(
                             videoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 } catch (SecurityException e) {
-                    e.printStackTrace();
+                    Log.e("VideoPermission", "持久化失败: " + e.getMessage());
                 }
 
                 ContentValues values = new ContentValues();
@@ -587,6 +617,7 @@ public class NotesList extends ListActivity {
                 values.put(NotePad.Notes.COLUMN_NAME_NOTE, videoUri.toString()); // 存 URI
                 values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
                 values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+                values.put(NotePad.Notes.COLUMN_NAME_NOTE_TYPE, 2);
                 getContentResolver().insert(getIntent().getData(), values);
                 performSearch("");
                 Toast.makeText(this, "视频笔记已保存", Toast.LENGTH_SHORT).show();
@@ -681,6 +712,7 @@ public class NotesList extends ListActivity {
         values.put(NotePad.Notes.COLUMN_NAME_NOTE, content);
         values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
         values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+        values.put(NotePad.Notes.COLUMN_NAME_NOTE_TYPE, 0);
         return values;
     }
 
@@ -694,6 +726,7 @@ public class NotesList extends ListActivity {
 
         // 【修改点】：导入的笔记默认为普通笔记
         values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, 0);
+        values.put(NotePad.Notes.COLUMN_NAME_NOTE_TYPE, 0);
 
         getContentResolver().insert(getIntent().getData(), values);
     }
@@ -875,8 +908,21 @@ public class NotesList extends ListActivity {
             if (mimeType != null && mimeType.startsWith("video/")) {
                 // 播放视频
                 Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setDataAndType(contentUri, mimeType);
+
+                // 👇 关键：一定要加上这个 Flag，否则外部播放器没有读取权限，就会黑屏
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                // 如果系统拿不到 MIME，给个兜底
+                if (mimeType == null || mimeType.isEmpty()) {
+                    mimeType = "video/*";
+                }
+
+                intent.setDataAndType(contentUri, mimeType);
+                intent.addCategory(Intent.CATEGORY_BROWSABLE); // 加上允许浏览
+
+                Log.d("VideoDebug", "尝试播放视频: " + contentUri.toString() + " | Type: " + mimeType);
+
                 try {
                     startActivity(Intent.createChooser(intent, "选择应用播放视频"));
                 } catch (ActivityNotFoundException e) {

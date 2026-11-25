@@ -154,5 +154,7 @@ public final class NotePad {
         public static final String COLUMN_NAME_IS_DONE = "is_done";
 
         public static final String COLUMN_NAME_IS_TODO = "is_todo";
+
+        public static final String COLUMN_NAME_NOTE_TYPE = "note_type";
     }
 }

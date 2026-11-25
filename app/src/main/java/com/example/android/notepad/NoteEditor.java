@@ -296,11 +296,21 @@ public class NoteEditor extends Activity {
             // the text cursor's position.
             int colNoteIndex = mCursor.getColumnIndex(NotePad.Notes.COLUMN_NAME_NOTE);
             String note = mCursor.getString(colNoteIndex);
-            mText.setTextKeepState(note);
+            String title = mCursor.getString(mCursor.getColumnIndex(NotePad.Notes.COLUMN_NAME_TITLE));
+            String displayText;
+            if (title == null || title.equals("无标题")) {
+                // 如果没标题，只有内容
+                displayText = note == null ? "" : note;
+            } else {
+                // 第一行标题，第二行（及之后）内容
+                displayText = title + "\n" + (note == null ? "" : note);
+            }
+
+            mText.setTextKeepState(displayText);
 
             // Stores the original note text, to allow the user to revert changes.
             if (mOriginalContent == null) {
-                mOriginalContent = note;
+                mOriginalContent = displayText;
             }
 
             /*
@@ -374,12 +384,55 @@ public class NoteEditor extends Activity {
                  */
             } else if (mState == STATE_EDIT) {
                 // Creates a map to contain the new values for the columns
-                updateNote(text, null);
+                updateNoteWithSplit(text);
             } else if (mState == STATE_INSERT) {
-                updateNote(text, text);
+                updateNoteWithSplit(text);
                 mState = STATE_EDIT;
             }
         }
+    }
+
+    /**
+     * 新增方法：根据换行符拆分文本，第一行作为标题，其余作为内容
+     */
+    private void updateNoteWithSplit(String fullText) {
+        String title = "";
+        String content = "";
+
+        // 寻找第一个换行符
+        int newlineIndex = fullText.indexOf('\n');
+
+        if (newlineIndex != -1) {
+            // 如果有换行，第一行是标题，第二行开始是内容
+            title = fullText.substring(0, newlineIndex).trim();
+            content = fullText.substring(newlineIndex + 1);
+        } else {
+            // 如果没有换行，整段文本作为标题，内容为空
+            title = fullText.trim();
+            content = "";
+        }
+
+        // 防止标题为空
+        if (title.isEmpty()) {
+            title = "无标题";
+        }
+
+        // 调用原有的 updateNote 方法，把拆分好的标题和内容传进去
+        // 注意：原本的 updateNote 只在 STATE_INSERT 处理标题，我们需要稍微改一下它
+        updateNoteDirectly(title, content);
+    }
+
+    /**
+     * 直接更新数据库（绕过原本 updateNote 里针对 STATE_INSERT 的截取逻辑）
+     */
+    private void updateNoteDirectly(String title, String content) {
+        ContentValues values = new ContentValues();
+        values.put(NotePad.Notes.COLUMN_NAME_MODIFICATION_DATE, System.currentTimeMillis());
+        values.put(NotePad.Notes.COLUMN_NAME_TITLE, title);
+        values.put(NotePad.Notes.COLUMN_NAME_NOTE, content);
+        values.put(NotePad.Notes.COLUMN_NAME_IS_TODO, isTodo ? 1 : 0);
+
+        getContentResolver().update(mUri, values, null, null);
     }
 
     /**
@@ -443,7 +496,7 @@ public class NoteEditor extends Activity {
         int id = item.getItemId();
         if(id== R.id.menu_save) {
             String text = mText.getText().toString();
-            updateNote(text, null);
+            updateNoteWithSplit(text);
             finish();
         } else if (id == R.id.menu_delete) {
             deleteNote();

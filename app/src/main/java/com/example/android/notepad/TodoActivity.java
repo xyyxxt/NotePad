@@ -67,6 +67,8 @@ public class TodoActivity extends Activity {
 
         // 进行中的 Adapter
         adapterDoing = new SimpleCursorAdapter(this, R.layout.item_todo, null, from, to, 0) {
+
+
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
@@ -79,6 +81,12 @@ public class TodoActivity extends Activity {
                 // 关键修复：这里的 id 需要在点击时获取，不能写在外面，防止列表滚动后 position 错乱
                 final long itemId = getItemId(position);
                 cb.setOnClickListener(v -> updateTodoStatus(itemId, 1));
+
+                view.setOnLongClickListener(v -> {
+                    showDeleteDialog(itemId);
+                    return true;
+                });
+
                 return view;
             }
         };
@@ -97,6 +105,12 @@ public class TodoActivity extends Activity {
 
                 final long itemId = getItemId(position);
                 cb.setOnClickListener(v -> updateTodoStatus(itemId, 0));
+
+                view.setOnLongClickListener(v -> {
+                    showDeleteDialog(itemId);
+                    return true;
+                });
+
                 return view;
             }
         };
@@ -138,5 +152,20 @@ public class TodoActivity extends Activity {
 
         // 更新完后重新加载数据
         loadData();
+    }
+
+    private void showDeleteDialog(long id) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("删除待办")
+                .setMessage("确定要删除这条待办吗？")
+                .setPositiveButton("删除", (dialog, which) -> deleteTodo(id))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void deleteTodo(long id) {
+        Uri noteUri = Uri.withAppendedPath(NotePad.Notes.CONTENT_URI, String.valueOf(id));
+        getContentResolver().delete(noteUri, null, null);
+        loadData(); // 刷新列表
     }
 }
